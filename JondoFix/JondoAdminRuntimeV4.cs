@@ -480,7 +480,178 @@ namespace JondoFix
                 }
             }
 
+            object runtimeMatch =
+                FindStaticServiceByRuntimeType(wanted, label);
+            if (IsValidObject(runtimeMatch))
+                return runtimeMatch;
+
             return null;
+        }
+
+        private static object FindStaticServiceByRuntimeType(
+            Type wanted,
+            string label)
+        {
+            // Certains services IL2CPP sont exposes derriere une interface
+            // ou Il2CppSystem.Object. Leur type declare ne permet donc pas
+            // au premier passage de les reconnaitre. Ce second passage
+            // controle le type reel de la valeur, membre par membre.
+            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (assembly == null ||
+                    assembly.FullName == null ||
+                    !assembly.FullName.StartsWith("Il2Cpp", StringComparison.Ordinal))
+                    continue;
+
+                foreach (Type holderType in SafeTypes(assembly))
+                {
+                    if (holderType == null)
+                        continue;
+
+                    FieldInfo[] fields;
+                    try
+                    {
+                        fields = holderType.GetFields(
+                            BindingFlags.Static |
+                            BindingFlags.Public |
+                            BindingFlags.NonPublic
+                        );
+                    }
+                    catch
+                    {
+                        fields = Array.Empty<FieldInfo>();
+                    }
+
+                    foreach (FieldInfo field in fields)
+                    {
+                        object value;
+                        try
+                        {
+                            if (!CanContainIl2CppService(field.FieldType))
+                                continue;
+
+                            value = field.GetValue(null);
+                        }
+                        catch
+                        {
+                            continue;
+                        }
+
+                        if (!IsRuntimeType(wanted, value))
+                            continue;
+
+                        MelonLogger.Msg(
+                            "[JondoAdminV6] " + label +
+                            " trouve par type reel dans " +
+                            holderType.FullName + "." + field.Name
+                        );
+                        return value;
+                    }
+                }
+            }
+
+            // Les champs sont sans effet de bord et sont testes en premier.
+            // Les proprietes statiques ne sont consultees qu'en dernier.
+            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (assembly == null ||
+                    assembly.FullName == null ||
+                    !assembly.FullName.StartsWith("Il2Cpp", StringComparison.Ordinal))
+                    continue;
+
+                foreach (Type holderType in SafeTypes(assembly))
+                {
+                    if (holderType == null)
+                        continue;
+
+                    PropertyInfo[] properties;
+                    try
+                    {
+                        properties = holderType.GetProperties(
+                            BindingFlags.Static |
+                            BindingFlags.Public |
+                            BindingFlags.NonPublic
+                        );
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    foreach (PropertyInfo property in properties)
+                    {
+                        object value;
+                        try
+                        {
+                            if (property.GetIndexParameters().Length != 0 ||
+                                !property.CanRead ||
+                                !CanContainIl2CppService(property.PropertyType))
+                                continue;
+
+                            value = property.GetValue(null, null);
+                        }
+                        catch
+                        {
+                            continue;
+                        }
+
+                        if (!IsRuntimeType(wanted, value))
+                            continue;
+
+                        MelonLogger.Msg(
+                            "[JondoAdminV6] " + label +
+                            " trouve par type reel dans " +
+                            holderType.FullName + "." + property.Name
+                        );
+                        return value;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static bool CanContainIl2CppService(Type declaredType)
+        {
+            try
+            {
+                if (declaredType == null ||
+                    declaredType == typeof(string) ||
+                    declaredType.IsPrimitive ||
+                    declaredType.IsEnum ||
+                    declaredType.IsValueType ||
+                    declaredType.IsPointer ||
+                    declaredType.IsByRef)
+                    return false;
+
+                string assemblyName = declaredType.Assembly?.FullName;
+                return declaredType == typeof(object) ||
+                       (assemblyName != null &&
+                        assemblyName.StartsWith(
+                            "Il2Cpp",
+                            StringComparison.Ordinal
+                        ));
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool IsRuntimeType(Type wanted, object value)
+        {
+            if (!IsValidObject(value))
+                return false;
+
+            try
+            {
+                return wanted.IsInstanceOfType(value) ||
+                       wanted.IsAssignableFrom(value.GetType());
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static bool IsCompatibleField(
