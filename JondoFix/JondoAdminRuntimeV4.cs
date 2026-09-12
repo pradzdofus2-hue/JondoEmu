@@ -14,6 +14,7 @@ namespace JondoFix
     {
         private static bool _f9Down;
         private static bool _menuScanDone;
+        private static bool _commandDiagnosticsDone;
         private static AdminMenu _capturedMenu;
 
         private const int VkF9 = 0x78;
@@ -200,10 +201,27 @@ namespace JondoFix
                 FindService(typeof(Il2Cpp.ezp), "ezp/messageBus") as Il2Cpp.ezp;
             Il2Cpp.faa playerService =
                 FindService(typeof(Il2Cpp.faa), "faa/playerService") as Il2Cpp.faa;
-            Il2Cpp.eww commandService =
-                FindService(typeof(Il2Cpp.eww), "eww/commandService") as Il2Cpp.eww;
             Il2Cpp.ewy configurationService =
                 FindService(typeof(Il2Cpp.ewy), "ewy/configurationService") as Il2Cpp.ewy;
+
+            object commandCandidate =
+                FindService(typeof(Il2Cpp.eww), "eww/commandService");
+
+            if (!IsValidObject(commandCandidate))
+            {
+                commandCandidate = FindServiceInRoots(
+                    typeof(Il2Cpp.eww),
+                    "eww/commandService",
+                    messageBus,
+                    playerService,
+                    configurationService
+                );
+            }
+
+            Il2Cpp.eww commandService = commandCandidate as Il2Cpp.eww;
+
+            if (!IsValidObject(commandService))
+                LogCommandServiceMetadata();
 
             var missing = new List<string>();
             if (!IsValidObject(messageBus)) missing.Add("ezp");
@@ -384,6 +402,199 @@ namespace JondoFix
                 "[JondoAdminV5] Service absent : " + label
             );
             return null;
+        }
+
+        private static object FindServiceInRoots(
+            Type wanted,
+            string label,
+            params object[] roots)
+        {
+            if (roots == null)
+                return null;
+
+            foreach (object root in roots)
+            {
+                if (!IsValidObject(root))
+                    continue;
+
+                Type holderType;
+                try { holderType = root.GetType(); }
+                catch { continue; }
+
+                FieldInfo[] fields;
+                try
+                {
+                    fields = holderType.GetFields(
+                        BindingFlags.Instance |
+                        BindingFlags.Public |
+                        BindingFlags.NonPublic
+                    );
+                }
+                catch
+                {
+                    fields = Array.Empty<FieldInfo>();
+                }
+
+                foreach (FieldInfo field in fields)
+                {
+                    object value;
+                    try
+                    {
+                        if (!IsCompatibleField(wanted, field) &&
+                            !CanContainIl2CppService(field.FieldType))
+                            continue;
+
+                        value = field.GetValue(root);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    if (!IsRuntimeType(wanted, value))
+                        continue;
+
+                    MelonLogger.Msg(
+                        "[JondoAdminV7] " + label + " trouve dans " +
+                        holderType.FullName + "." + field.Name
+                    );
+                    return value;
+                }
+
+                PropertyInfo[] properties;
+                try
+                {
+                    properties = holderType.GetProperties(
+                        BindingFlags.Instance |
+                        BindingFlags.Public |
+                        BindingFlags.NonPublic
+                    );
+                }
+                catch
+                {
+                    continue;
+                }
+
+                foreach (PropertyInfo property in properties)
+                {
+                    object value;
+                    try
+                    {
+                        if (property.GetIndexParameters().Length != 0 ||
+                            !property.CanRead ||
+                            (!IsCompatibleProperty(wanted, property) &&
+                             !CanContainIl2CppService(property.PropertyType)))
+                            continue;
+
+                        value = property.GetValue(root, null);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    if (!IsRuntimeType(wanted, value))
+                        continue;
+
+                    MelonLogger.Msg(
+                        "[JondoAdminV7] " + label + " trouve dans " +
+                        holderType.FullName + "." + property.Name
+                    );
+                    return value;
+                }
+            }
+
+            return null;
+        }
+
+        private static void LogCommandServiceMetadata()
+        {
+            if (_commandDiagnosticsDone)
+                return;
+
+            _commandDiagnosticsDone = true;
+
+            try
+            {
+                Type wanted = typeof(Il2Cpp.eww);
+                string baseName = "(aucun)";
+
+                try
+                {
+                    if (wanted.BaseType != null)
+                        baseName = wanted.BaseType.FullName;
+                }
+                catch
+                {
+                    baseName = "(illisible)";
+                }
+
+                MelonLogger.Warning(
+                    "[JondoAdminV7] eww metadata : interface=" +
+                    wanted.IsInterface + ", base=" + baseName
+                );
+
+                ConstructorInfo[] constructors;
+                try
+                {
+                    constructors = wanted.GetConstructors(
+                        BindingFlags.Instance |
+                        BindingFlags.Public |
+                        BindingFlags.NonPublic
+                    );
+                }
+                catch (Exception ex)
+                {
+                    MelonLogger.Warning(
+                        "[JondoAdminV7] Constructeurs eww illisibles : " +
+                        ex.Message
+                    );
+                    return;
+                }
+
+                MelonLogger.Warning(
+                    "[JondoAdminV7] Constructeurs eww : " +
+                    constructors.Length
+                );
+
+                foreach (ConstructorInfo constructor in constructors)
+                {
+                    try
+                    {
+                        ParameterInfo[] parameters =
+                            constructor.GetParameters();
+                        var names = new List<string>();
+
+                        foreach (ParameterInfo parameter in parameters)
+                        {
+                            string typeName;
+                            try { typeName = parameter.ParameterType.FullName; }
+                            catch { typeName = "?"; }
+
+                            names.Add(typeName + " " + parameter.Name);
+                        }
+
+                        MelonLogger.Warning(
+                            "[JondoAdminV7] eww.ctor(" +
+                            string.Join(", ", names) + ")"
+                        );
+                    }
+                    catch (Exception ex)
+                    {
+                        MelonLogger.Warning(
+                            "[JondoAdminV7] Signature eww illisible : " +
+                            ex.Message
+                        );
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning(
+                    "[JondoAdminV7] Diagnostic eww impossible : " +
+                    ex.Message
+                );
+            }
         }
 
         private static object FindStaticService(
