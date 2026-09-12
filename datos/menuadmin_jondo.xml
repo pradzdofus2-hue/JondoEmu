@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<menu>
+  <item type="static" label="JondoEmu — Administration"/>
+  <item type="menu" label="Personnage">
+    <item type="prepareCommand" label="Ajouter/retirer des kamas" command=".kamas "/>
+    <item type="prepareCommand" label="Changer le niveau" command=".level "/>
+    <item type="prepareCommand" label="Changer la taille" command=".size "/>
+    <item type="sendChat" label="Ouvrir la boutique" command=".shop"/>
+  </item>
+  <item type="menu" label="Objets">
+    <item type="prepareCommand" label="Donner un objet" command=".item "/>
+    <item type="prepareCommand" label="Donner une panoplie" command=".itemset "/>
+  </item>
+  <item type="menu" label="Déplacements">
+    <item type="prepareCommand" label="Téléporter par map ID" command=".teleport "/>
+    <item type="prepareCommand" label="Téléporter par coordonnées" command=".relative "/>
+  </item>
+  <item type="menu" label="Développement">
+    <item type="sendChat" label="Top 20 paquets inconnus" command=".packets 20"/>
+  </item>
+</menu>

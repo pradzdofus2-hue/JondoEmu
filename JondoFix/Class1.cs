@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using MelonLoader;
 using HarmonyLib;
 using Il2CppThrift.Transport;
@@ -752,8 +752,14 @@ namespace JondoFix
             }
         }
 
+        public override void OnGUI()
+        {
+            JondoAdminTools.Draw(); // JONDO_ADMIN_GUI
+        }
+
         public override void OnUpdate()
         {
+            JondoAdminTools.Update();
             if (UseLocalRedirect && !itemMappingsLoadedFromClient)
             {
                 try

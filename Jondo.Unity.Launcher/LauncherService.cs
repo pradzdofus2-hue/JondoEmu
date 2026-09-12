@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using Jondo.Unity.Launcher.Network;
@@ -404,6 +404,8 @@ namespace Jondo.Unity.Launcher
                 // It is cosmetic: every administration command is still authorized by the server.
                 startInfo.Environment["JONDO_ACCOUNT_ROLE"] = accountRole.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
+                startInfo.Environment["JONDO_ADMIN_TOKEN"] = token ?? ""; // JONDO_ADMIN_TOKEN_ENV
+                startInfo.Environment["JONDO_EMULATOR_ROOT"] = AppContext.BaseDirectory;
                 System.Diagnostics.Process? client;
                 try
                 {

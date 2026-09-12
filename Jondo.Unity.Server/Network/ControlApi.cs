@@ -119,6 +119,11 @@ namespace Jondo.Unity.Server.Network
                     case Prefijo + "apagar": return ConRol(cuerpo, Roles.Administrador, Apagar);
                     case Prefijo + "rol": return ConRol(cuerpo, Roles.Administrador,
                         cuenta => CambiarRol(cuerpo, cuenta));
+                    case Prefijo + "commande": // JONDO_ADMIN_COMMAND_ROUTE
+                        return !metodo.Equals("POST", StringComparison.OrdinalIgnoreCase)
+                            ? Mal(405, "metodo")
+                            : ConRol(cuerpo, Roles.Administrador,
+                                cuenta => EjecutarComando(cuerpo, cuenta));
                     case Prefijo + "personaje":
                         return !metodo.Equals("POST", StringComparison.OrdinalIgnoreCase)
                             ? Mal(405, "metodo")
@@ -189,6 +194,35 @@ namespace Jondo.Unity.Server.Network
         /// sesion evita que una orden HTTP pise un movimiento, un combate o cualquier otro paquete
         /// que el cliente este atendiendo a la vez.
         /// </summary>
+        private static Respuesta EjecutarComando(string cuerpo, long administrador) // JONDO_ADMIN_COMMAND_METHOD
+        {
+            string personaje = Texto(cuerpo, "personaje").Trim();
+            string comando = Texto(cuerpo, "comando").Trim();
+            if (personaje.Length == 0) return Mal(400, "personaje");
+            if (!comando.StartsWith(".", StringComparison.Ordinal)) return Mal(400, "comando");
+
+            var sesion = SessionRegistry.FindByName(personaje);
+            if (sesion == null || !sesion.HasCharacter || !sesion.IsInWorld || sesion.Stream == null)
+                return Mal(404, "personaje-desconectado");
+
+            if (!sesion.UnoCadaVez.Wait(PlazoDelTurno)) return Mal(409, "personaje-ocupado");
+            try
+            {
+                using (SessionContext.Push(sesion))
+                {
+                    bool reconnue = CommandHandler.TryHandleAsync(
+                        sesion.Stream, comando, channel: 0, accountId: administrador)
+                        .GetAwaiter().GetResult();
+                    if (!reconnue) return Mal(400, "commande-inconnue");
+                    return Bien(new { bien = true, personaje = sesion.State.CharacterName, comando });
+                }
+            }
+            finally
+            {
+                sesion.UnoCadaVez.Release();
+            }
+        }
+
         private static Respuesta AdministrarPersonaje(string cuerpo, long administrador)
         {
             if (!LiveCharacterUpdate.TryParse(cuerpo, out var update, out string error)
