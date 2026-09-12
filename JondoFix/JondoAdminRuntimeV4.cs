@@ -173,7 +173,19 @@ namespace JondoFix
 
         public static bool PrepareOfficialMenu()
         {
-            AdminMenu menu = CurrentMenu();
+            AdminMenu menu = null;
+
+            try
+            {
+                menu = CurrentMenu();
+            }
+            catch (Exception scanError)
+            {
+                MelonLogger.Warning(
+                    "[JondoAdminV5] Recherche AdminMenu existant ignoree : " +
+                    scanError.Message
+                );
+            }
 
             if (IsValidMenu(menu))
             {
@@ -340,7 +352,7 @@ namespace JondoFix
                     foreach (PropertyInfo property in properties)
                     {
                         if (property.GetIndexParameters().Length != 0 ||
-                            !wanted.IsAssignableFrom(property.PropertyType))
+                            !IsCompatibleType(wanted, property.PropertyType))
                             continue;
 
                         try
@@ -409,7 +421,7 @@ namespace JondoFix
 
                     foreach (FieldInfo field in fields)
                     {
-                        if (!wanted.IsAssignableFrom(field.FieldType))
+                        if (!IsCompatibleType(wanted, field.FieldType))
                             continue;
 
                         try
@@ -447,7 +459,7 @@ namespace JondoFix
                     foreach (PropertyInfo property in properties)
                     {
                         if (property.GetIndexParameters().Length != 0 ||
-                            !wanted.IsAssignableFrom(property.PropertyType))
+                            !IsCompatibleType(wanted, property.PropertyType))
                             continue;
 
                         try
@@ -471,6 +483,20 @@ namespace JondoFix
             }
 
             return null;
+        }
+
+        private static bool IsCompatibleType(Type wanted, Type candidate)
+        {
+            try
+            {
+                return wanted != null &&
+                       candidate != null &&
+                       wanted.IsAssignableFrom(candidate);
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static Type[] SafeTypes(Assembly assembly)
