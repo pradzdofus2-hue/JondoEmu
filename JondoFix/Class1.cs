@@ -760,6 +760,7 @@ namespace JondoFix
         public override void OnUpdate()
         {
             JondoAdminTools.Update();
+            JondoAdminRuntimeV4.Update();
             if (UseLocalRedirect && !itemMappingsLoadedFromClient)
             {
                 try
@@ -1576,4 +1577,5 @@ namespace JondoFix
         }
     }
 }
+
 
