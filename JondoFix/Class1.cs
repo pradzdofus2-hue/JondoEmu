@@ -754,7 +754,7 @@ namespace JondoFix
 
         public override void OnGUI()
         {
-            JondoAdminTools.Draw(); // JONDO_ADMIN_GUI
+            // Ancien GUILayout desactive : utilisation du Canvas V4 uniquement.
         }
 
         public override void OnUpdate()
@@ -1577,5 +1577,6 @@ namespace JondoFix
         }
     }
 }
+
 
 

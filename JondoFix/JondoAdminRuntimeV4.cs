@@ -217,7 +217,24 @@ namespace JondoFix
             try
             {
                 Type menuType = typeof(AdminMenu);
-                Type[] types = menuType.Assembly.GetTypes();
+                Type[] types;
+
+                try
+                {
+                    types = menuType.Assembly.GetTypes();
+                }
+                catch (ReflectionTypeLoadException loadError)
+                {
+                    types = Array.FindAll(
+                        loadError.Types,
+                        loadedType => loadedType != null
+                    );
+
+                    MelonLogger.Warning(
+                        "[JondoAdminV4] Certains types IL2CPP sont invalides, scan poursuivi sur " +
+                        types.Length + " types valides."
+                    );
+                }
 
                 foreach (Type type in types)
                 {
@@ -298,7 +315,7 @@ namespace JondoFix
                 string status = statusField?.GetValue(null) as string;
 
                 if (!string.IsNullOrWhiteSpace(status))
-                    JondoAdminRuntimeV4.SetStatus(status);
+                    MelonLogger.Msg("[JondoAdminV4] Etat interne : " + status);
             }
             catch
             {
@@ -309,6 +326,12 @@ namespace JondoFix
     [HarmonyPatch]
     public static class JondoAdminMenuConstructorV4Patch
     {
+        public static bool Prepare()
+        {
+            // Les constructeurs IL2CPP AdminMenu ne supportent pas ce patch.
+            return false;
+        }
+
         public static IEnumerable<MethodBase> TargetMethods()
         {
             foreach (ConstructorInfo constructor in
@@ -325,3 +348,4 @@ namespace JondoFix
         }
     }
 }
+
