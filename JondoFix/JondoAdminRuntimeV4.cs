@@ -173,94 +173,168 @@ namespace JondoFix
 
         public static bool PrepareOfficialMenu()
         {
-            AdminMenu menu = _capturedMenu;
+            AdminMenu menu = CurrentMenu();
 
-            if (menu == null || menu.Pointer == IntPtr.Zero)
+            if (IsValidMenu(menu))
             {
-                try
-                {
-                    FieldInfo originalField = AccessTools.Field(
-                        typeof(JondoAdminTools),
-                        "_officialMenu"
-                    );
-
-                    menu = originalField?.GetValue(null) as AdminMenu;
-                }
-                catch
-                {
-                    menu = null;
-                }
+                CaptureMenu(menu);
+                SetStatus("AdminMenu trouve. Chargement du XML Jondo...");
+                return true;
             }
 
-            if ((menu == null || menu.Pointer == IntPtr.Zero) &&
-                !_menuScanDone)
-            {
-                _menuScanDone = true;
-                menu = FindStaticMenu();
-            }
+            SetStatus("Recherche des services internes Ankama...");
 
-            if (menu == null || menu.Pointer == IntPtr.Zero)
+            Il2Cpp.ezp messageBus =
+                FindService(typeof(Il2Cpp.ezp), "ezp/messageBus") as Il2Cpp.ezp;
+            Il2Cpp.faa playerService =
+                FindService(typeof(Il2Cpp.faa), "faa/playerService") as Il2Cpp.faa;
+            Il2Cpp.eww commandService =
+                FindService(typeof(Il2Cpp.eww), "eww/commandService") as Il2Cpp.eww;
+            Il2Cpp.ewy configurationService =
+                FindService(typeof(Il2Cpp.ewy), "ewy/configurationService") as Il2Cpp.ewy;
+
+            var missing = new List<string>();
+            if (!IsValidObject(messageBus)) missing.Add("ezp");
+            if (!IsValidObject(playerService)) missing.Add("faa");
+            if (!IsValidObject(commandService)) missing.Add("eww");
+            if (!IsValidObject(configurationService)) missing.Add("ewy");
+
+            if (missing.Count != 0)
             {
                 SetStatus(
-                    "AdminMenu Ankama absent : le client normal ne l'a pas instancie."
+                    "AdminMenu non construit. Services introuvables : " +
+                    string.Join(", ", missing)
                 );
                 return false;
             }
 
-            CaptureMenu(menu);
-            SetStatus("AdminMenu trouve. Chargement du XML Jondo...");
-            return true;
-        }
-
-        private static AdminMenu FindStaticMenu()
-        {
             try
             {
-                Type menuType = typeof(AdminMenu);
-                Type[] types;
+                menu = new AdminMenu(
+                    messageBus,
+                    playerService,
+                    commandService,
+                    configurationService
+                );
+
+                CaptureMenu(menu);
 
                 try
                 {
-                    types = menuType.Assembly.GetTypes();
+                    menu.OnStart();
+                    MelonLogger.Msg("[JondoAdminV5] AdminMenu.OnStart execute.");
                 }
-                catch (ReflectionTypeLoadException loadError)
+                catch (Exception startError)
                 {
-                    types = Array.FindAll(
-                        loadError.Types,
-                        loadedType => loadedType != null
-                    );
-
                     MelonLogger.Warning(
-                        "[JondoAdminV4] Certains types IL2CPP sont invalides, scan poursuivi sur " +
-                        types.Length + " types valides."
+                        "[JondoAdminV5] OnStart non bloquant : " +
+                        startError.Message
                     );
                 }
 
-                foreach (Type type in types)
-                {
-                    FieldInfo[] fields = type.GetFields(
-                        BindingFlags.Static |
-                        BindingFlags.Public |
-                        BindingFlags.NonPublic
-                    );
+                SetStatus(
+                    "AdminMenu Ankama construit. Chargement du XML Jondo..."
+                );
+                return true;
+            }
+            catch (Exception ex)
+            {
+                SetStatus("Construction AdminMenu impossible : " + ex.Message);
+                MelonLogger.Error("[JondoAdminV5] " + ex);
+                return false;
+            }
+        }
 
-                    foreach (FieldInfo field in fields)
+        private static AdminMenu CurrentMenu()
+        {
+            if (IsValidMenu(_capturedMenu))
+                return _capturedMenu;
+
+            try
+            {
+                FieldInfo originalField = AccessTools.Field(
+                    typeof(JondoAdminTools),
+                    "_officialMenu"
+                );
+
+                AdminMenu menu = originalField?.GetValue(null) as AdminMenu;
+                if (IsValidMenu(menu))
+                    return menu;
+            }
+            catch
+            {
+            }
+
+            return FindStaticMenu();
+        }
+
+        private static bool IsValidMenu(AdminMenu menu)
+        {
+            return menu != null && menu.Pointer != IntPtr.Zero;
+        }
+
+        private static bool IsValidObject(Il2CppSystem.Object value)
+        {
+            return value != null && value.Pointer != IntPtr.Zero;
+        }
+
+        private static Il2CppSystem.Object FindService(Type wanted, string label)
+        {
+            Il2CppSystem.Object found = FindStaticService(wanted, label);
+            if (IsValidObject(found))
+                return found;
+
+            try
+            {
+                MonoBehaviour[] behaviours =
+                    Resources.FindObjectsOfTypeAll<MonoBehaviour>();
+
+                int count = behaviours == null ? 0 : behaviours.Length;
+
+                for (int i = 0; i < count; i++)
+                {
+                    MonoBehaviour behaviour = behaviours[i];
+                    if (behaviour == null || behaviour.Pointer == IntPtr.Zero)
+                        continue;
+
+                    Type holderType;
+                    try { holderType = behaviour.GetType(); }
+                    catch { continue; }
+
+                    PropertyInfo[] properties;
+                    try
                     {
-                        if (!menuType.IsAssignableFrom(field.FieldType))
+                        properties = holderType.GetProperties(
+                            BindingFlags.Instance |
+                            BindingFlags.Public |
+                            BindingFlags.NonPublic
+                        );
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    foreach (PropertyInfo property in properties)
+                    {
+                        if (property.GetIndexParameters().Length != 0 ||
+                            !wanted.IsAssignableFrom(property.PropertyType))
                             continue;
 
                         try
                         {
-                            AdminMenu menu = field.GetValue(null) as AdminMenu;
+                            Il2CppSystem.Object value =
+                                property.GetValue(behaviour, null)
+                                as Il2CppSystem.Object;
 
-                            if (menu != null && menu.Pointer != IntPtr.Zero)
-                            {
-                                MelonLogger.Msg(
-                                    "[JondoAdminV4] AdminMenu trouve dans " +
-                                    type.FullName + "." + field.Name
-                                );
-                                return menu;
-                            }
+                            if (!IsValidObject(value))
+                                continue;
+
+                            MelonLogger.Msg(
+                                "[JondoAdminV5] " + label + " trouve via " +
+                                holderType.FullName + "." + property.Name
+                            );
+                            return value;
                         }
                         catch
                         {
@@ -271,11 +345,143 @@ namespace JondoFix
             catch (Exception ex)
             {
                 MelonLogger.Warning(
-                    "[JondoAdminV4] Scan AdminMenu : " + ex.Message
+                    "[JondoAdminV5] Scan Unity " + label + " : " + ex.Message
                 );
             }
 
+            MelonLogger.Warning(
+                "[JondoAdminV5] Service absent : " + label
+            );
             return null;
+        }
+
+        private static Il2CppSystem.Object FindStaticService(
+            Type wanted,
+            string label)
+        {
+            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (assembly == null ||
+                    assembly.FullName == null ||
+                    !assembly.FullName.StartsWith("Il2Cpp", StringComparison.Ordinal))
+                    continue;
+
+                Type[] types = SafeTypes(assembly);
+
+                foreach (Type holderType in types)
+                {
+                    if (holderType == null)
+                        continue;
+
+                    FieldInfo[] fields;
+                    try
+                    {
+                        fields = holderType.GetFields(
+                            BindingFlags.Static |
+                            BindingFlags.Public |
+                            BindingFlags.NonPublic
+                        );
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    foreach (FieldInfo field in fields)
+                    {
+                        if (!wanted.IsAssignableFrom(field.FieldType))
+                            continue;
+
+                        try
+                        {
+                            Il2CppSystem.Object value =
+                                field.GetValue(null) as Il2CppSystem.Object;
+
+                            if (!IsValidObject(value))
+                                continue;
+
+                            MelonLogger.Msg(
+                                "[JondoAdminV5] " + label + " trouve dans " +
+                                holderType.FullName + "." + field.Name
+                            );
+                            return value;
+                        }
+                        catch
+                        {
+                        }
+                    }
+
+                    PropertyInfo[] properties;
+                    try
+                    {
+                        properties = holderType.GetProperties(
+                            BindingFlags.Static |
+                            BindingFlags.Public |
+                            BindingFlags.NonPublic
+                        );
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    foreach (PropertyInfo property in properties)
+                    {
+                        if (property.GetIndexParameters().Length != 0 ||
+                            !wanted.IsAssignableFrom(property.PropertyType))
+                            continue;
+
+                        try
+                        {
+                            Il2CppSystem.Object value =
+                                property.GetValue(null, null)
+                                as Il2CppSystem.Object;
+
+                            if (!IsValidObject(value))
+                                continue;
+
+                            MelonLogger.Msg(
+                                "[JondoAdminV5] " + label + " trouve dans " +
+                                holderType.FullName + "." + property.Name
+                            );
+                            return value;
+                        }
+                        catch
+                        {
+                        }
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static Type[] SafeTypes(Assembly assembly)
+        {
+            try
+            {
+                return assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException loadError)
+            {
+                return Array.FindAll(
+                    loadError.Types,
+                    loadedType => loadedType != null
+                );
+            }
+            catch
+            {
+                return Array.Empty<Type>();
+            }
+        }
+
+        private static AdminMenu FindStaticMenu()
+        {
+            Il2CppSystem.Object value = FindStaticService(
+                typeof(AdminMenu),
+                "AdminMenu"
+            );
+            return value as AdminMenu;
         }
     }
 
