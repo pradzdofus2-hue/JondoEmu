@@ -273,14 +273,36 @@ namespace JondoFix
             return menu != null && menu.Pointer != IntPtr.Zero;
         }
 
-        private static bool IsValidObject(Il2CppSystem.Object value)
+        private static bool IsValidObject(object value)
         {
-            return value != null && value.Pointer != IntPtr.Zero;
+            if (value == null)
+                return false;
+
+            try
+            {
+                PropertyInfo pointerProperty = value.GetType().GetProperty(
+                    "Pointer",
+                    BindingFlags.Instance |
+                    BindingFlags.Public |
+                    BindingFlags.NonPublic
+                );
+
+                if (pointerProperty == null)
+                    return true;
+
+                object pointerValue = pointerProperty.GetValue(value, null);
+                return pointerValue is IntPtr pointer &&
+                       pointer != IntPtr.Zero;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
-        private static Il2CppSystem.Object FindService(Type wanted, string label)
+        private static object FindService(Type wanted, string label)
         {
-            Il2CppSystem.Object found = FindStaticService(wanted, label);
+            object found = FindStaticService(wanted, label);
             if (IsValidObject(found))
                 return found;
 
@@ -323,9 +345,7 @@ namespace JondoFix
 
                         try
                         {
-                            Il2CppSystem.Object value =
-                                property.GetValue(behaviour, null)
-                                as Il2CppSystem.Object;
+                            object value = property.GetValue(behaviour, null);
 
                             if (!IsValidObject(value))
                                 continue;
@@ -355,7 +375,7 @@ namespace JondoFix
             return null;
         }
 
-        private static Il2CppSystem.Object FindStaticService(
+        private static object FindStaticService(
             Type wanted,
             string label)
         {
@@ -394,8 +414,7 @@ namespace JondoFix
 
                         try
                         {
-                            Il2CppSystem.Object value =
-                                field.GetValue(null) as Il2CppSystem.Object;
+                            object value = field.GetValue(null);
 
                             if (!IsValidObject(value))
                                 continue;
@@ -433,9 +452,7 @@ namespace JondoFix
 
                         try
                         {
-                            Il2CppSystem.Object value =
-                                property.GetValue(null, null)
-                                as Il2CppSystem.Object;
+                            object value = property.GetValue(null, null);
 
                             if (!IsValidObject(value))
                                 continue;
@@ -477,7 +494,7 @@ namespace JondoFix
 
         private static AdminMenu FindStaticMenu()
         {
-            Il2CppSystem.Object value = FindStaticService(
+            object value = FindStaticService(
                 typeof(AdminMenu),
                 "AdminMenu"
             );
