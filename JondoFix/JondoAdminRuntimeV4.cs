@@ -351,8 +351,7 @@ namespace JondoFix
 
                     foreach (PropertyInfo property in properties)
                     {
-                        if (property.GetIndexParameters().Length != 0 ||
-                            !IsCompatibleType(wanted, property.PropertyType))
+                        if (!IsCompatibleProperty(wanted, property))
                             continue;
 
                         try
@@ -421,7 +420,7 @@ namespace JondoFix
 
                     foreach (FieldInfo field in fields)
                     {
-                        if (!IsCompatibleType(wanted, field.FieldType))
+                        if (!IsCompatibleField(wanted, field))
                             continue;
 
                         try
@@ -458,8 +457,7 @@ namespace JondoFix
 
                     foreach (PropertyInfo property in properties)
                     {
-                        if (property.GetIndexParameters().Length != 0 ||
-                            !IsCompatibleType(wanted, property.PropertyType))
+                        if (!IsCompatibleProperty(wanted, property))
                             continue;
 
                         try
@@ -485,13 +483,32 @@ namespace JondoFix
             return null;
         }
 
-        private static bool IsCompatibleType(Type wanted, Type candidate)
+        private static bool IsCompatibleField(
+            Type wanted,
+            FieldInfo field)
         {
             try
             {
                 return wanted != null &&
-                       candidate != null &&
-                       wanted.IsAssignableFrom(candidate);
+                       field != null &&
+                       wanted.IsAssignableFrom(field.FieldType);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool IsCompatibleProperty(
+            Type wanted,
+            PropertyInfo property)
+        {
+            try
+            {
+                return wanted != null &&
+                       property != null &&
+                       property.GetIndexParameters().Length == 0 &&
+                       wanted.IsAssignableFrom(property.PropertyType);
             }
             catch
             {
